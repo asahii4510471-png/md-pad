@@ -1,4 +1,5 @@
 import './style.css';
+import { openMarkdown, saveMarkdown } from './files.js';
 import { render } from './render.js';
 import { createNote, updateNote, listNotes, deleteNote } from './store.js';
 
@@ -183,3 +184,27 @@ try {
 } finally {
   editor.readOnly = false;
 }
+
+
+document.querySelector('#open-file').addEventListener('click', async () => {
+  try {
+    // Invoke the picker during the click's user activation.
+    const file = await openMarkdown();
+    if (!file) return;
+    await noteAction(async () => {
+      loadNote(await createNote(file.content));
+      await refreshNotes();
+    });
+  } catch (error) {
+    report(error);
+  }
+});
+
+document.querySelector('#save-file').addEventListener('click', async () => {
+  try {
+    const title = editor.value.split('\n').find((line) => line.trim())?.replace(/^#+\s*/, '').trim();
+    if (await saveMarkdown(editor.value, title)) status.textContent = '.md ファイルを保存しました';
+  } catch (error) {
+    report(error);
+  }
+});
