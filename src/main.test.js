@@ -10,6 +10,7 @@ it('initializes the app, debounces saves, flushes before switching, and manages 
   const select = document.querySelector('#notes');
   const originalId = select.value;
   expect(select.options).toHaveLength(1);
+  expect(editor.value).toBe('');
   expect(document.querySelector('#new-note').disabled).toBe(false);
   editor.value = '# Debounced';
   editor.dispatchEvent(new Event('input'));
