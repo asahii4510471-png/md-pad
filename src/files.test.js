@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { supportsFileSystemAccess, openMarkdown, saveMarkdown } from './files.js';
+import { supportsFileSystemAccess, openMarkdown, saveMarkdown, registerFileHandler } from './files.js';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
@@ -51,5 +51,68 @@ describe('Markdown files', () => {
     expect(create.mock.calls[0][0].type).toBe('text/markdown;charset=utf-8');
     vi.advanceTimersByTime(1000);
     expect(revoke).toHaveBeenCalledWith('blob:test');
+  });
+});
+
+// OS file launches are independent of the in-app picker API.
+describe('installed PWA file handler', () => {
+  function launchQueue(onFile = vi.fn(), onError = vi.fn()) {
+    const queue = { setConsumer: vi.fn() };
+    expect(registerFileHandler(onFile, onError, { launchQueue: queue })).toBe(true);
+    return { consume: queue.setConsumer.mock.calls[0][0], onFile, onError };
+  }
+  const handle = (name, content) => ({ getFile: async () => ({ name, text: async () => content }) });
+
+  it('does not register when launchQueue is unavailable', () => {
+    expect(registerFileHandler(vi.fn(), vi.fn(), {})).toBe(false);
+    expect(registerFileHandler(vi.fn(), vi.fn(), { launchQueue: {} })).toBe(false);
+  });
+
+  it('ignores a launch without files', async () => {
+    const { consume, onFile, onError } = launchQueue();
+    await consume({ files: [] });
+    await consume({});
+    expect(onFile).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('reads every .md file, including uppercase extensions', async () => {
+    const { consume, onFile, onError } = launchQueue();
+    await consume({ files: [handle('a.md', '# A'), handle('b.MD', '# B')] });
+    expect(onFile.mock.calls).toEqual([[{ name: 'a.md', content: '# A' }], [{ name: 'b.MD', content: '# B' }]]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('handles separate launches in order while an earlier file is still importing', async () => {
+    let release;
+    const firstImport = new Promise((resolve) => { release = resolve; });
+    const events = [];
+    const onFile = vi.fn(async (file) => {
+      events.push(file.name);
+      if (file.name === 'a.md') await firstImport;
+    });
+    const { consume } = launchQueue(onFile);
+    const first = consume({ files: [handle('a.md', 'a')] });
+    const second = consume({ files: [handle('b.md', 'b')] });
+    await vi.waitFor(() => expect(events).toEqual(['a.md']));
+    release();
+    await Promise.all([first, second]);
+    expect(events).toEqual(['a.md', 'b.md']);
+  });
+
+  it('reports denied access, bad extensions and read failures without losing later files', async () => {
+    const denied = new DOMException('Denied', 'NotAllowedError');
+    const { consume, onFile, onError } = launchQueue();
+    await consume({ files: [
+      { getFile: async () => { throw denied; } },
+      handle('bad.txt', 'not markdown'),
+      { getFile: async () => ({ name: 'broken.md', text: async () => { throw new Error('Read failed'); } }) },
+      handle('good.md', 'good'),
+    ] });
+    expect(onError).toHaveBeenCalledTimes(3);
+    expect(onError).toHaveBeenNthCalledWith(1, denied);
+    expect(onFile).toHaveBeenCalledExactlyOnceWith({ name: 'good.md', content: 'good' });
+    await consume({ files: [handle('next.md', 'next')] });
+    expect(onFile).toHaveBeenLastCalledWith({ name: 'next.md', content: 'next' });
   });
 });
