@@ -10,7 +10,8 @@ export async function filesIn(directory) {
   }))).flat();
 }
 
-const files = (await filesIn('dist')).filter((file) => /\.(js|css|html)$/.test(file));
+const allFiles = await filesIn('dist');
+const files = allFiles.filter((file) => /\.(js|css|html)$/.test(file));
 let total = 0;
 for (const file of files) {
   const bytes = gzipSync(await readFile(file)).byteLength;
@@ -18,4 +19,6 @@ for (const file of files) {
   console.log(`${file}: ${(bytes / 1000).toFixed(2)} KB gzip`);
 }
 console.log(`Total: ${(total / 1000).toFixed(2)} KB gzip (limit: <150 KB)`);
-if (total >= 150_000) process.exitCode = 1;
+const allGzip = (await Promise.all(allFiles.map(async (file) => gzipSync(await readFile(file)).byteLength))).reduce((sum, bytes) => sum + bytes, 0);
+console.log(`All precached files (including icons and manifest): ${(allGzip / 1000).toFixed(2)} KB gzip`);
+if (total >= 150_000 || allGzip >= 150_000) process.exitCode = 1;
