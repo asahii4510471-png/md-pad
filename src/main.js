@@ -47,10 +47,10 @@ function updatePreview() {
 editor.addEventListener('input', updatePreview);
 updatePreview();
 
-for (const button of document.querySelectorAll('[data-view]button')) {
+for (const button of document.querySelectorAll('button[data-view]')) {
   button.addEventListener('click', () => {
     document.querySelector('.workspace').dataset.view = button.dataset.view;
-    for (const tab of document.querySelectorAll('[data-view]button')) {
+    for (const tab of document.querySelectorAll('button[data-view]')) {
       tab.setAttribute('aria-pressed', String(tab === button));
     }
   });
@@ -208,3 +208,17 @@ document.querySelector('#save-file').addEventListener('click', async () => {
     report(error);
   }
 });
+
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  const registerServiceWorker = () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
+      scope: import.meta.env.BASE_URL,
+    }).catch((error) => {
+      console.error(error);
+      status.textContent = 'オフライン準備に失敗しました。接続を確認して再読み込みしてください。';
+    });
+  };
+  if (document.readyState === 'complete') registerServiceWorker();
+  else window.addEventListener('load', registerServiceWorker, { once: true });
+}
