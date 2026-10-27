@@ -27,6 +27,11 @@ function chooseFile() {
   });
 }
 
+async function readMarkdown(file) {
+  if (!/\.md$/i.test(file.name)) throw new Error('.md ファイルを選択してください。');
+  return { name: file.name, content: await file.text() };
+}
+
 export async function openMarkdown() {
   let file;
   try {
@@ -37,8 +42,7 @@ export async function openMarkdown() {
       file = await chooseFile();
     }
     if (!file) return null;
-    if (!/\.md$/i.test(file.name)) throw new Error('.md ファイルを選択してください。');
-    return { name: file.name, content: await file.text() };
+    return await readMarkdown(file);
   } catch (error) {
     if (error.name === 'AbortError') return null;
     throw error;
@@ -73,4 +77,28 @@ export async function saveMarkdown(content, title) {
     if (error.name === 'AbortError') return false;
     throw error;
   }
+}
+
+
+/** Receive files handed to the installed PWA by the operating system. */
+export function registerFileHandler(onFile, onError, scope = window) {
+  if (typeof scope.launchQueue?.setConsumer !== 'function') return false;
+  let pendingLaunch = Promise.resolve();
+  scope.launchQueue.setConsumer((launchParams) => {
+    const files = [...(launchParams.files || [])];
+    // Windows may deliver several separate launches, even for one selection.
+    const handleLaunch = async () => {
+      for (const handle of files) {
+        try {
+          const file = await readMarkdown(await handle.getFile());
+          await onFile(file);
+        } catch (error) {
+          onError(error);
+        }
+      }
+    };
+    pendingLaunch = pendingLaunch.then(handleLaunch, handleLaunch);
+    return pendingLaunch;
+  });
+  return true;
 }

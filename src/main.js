@@ -1,5 +1,5 @@
 import './style.css';
-import { openMarkdown, saveMarkdown } from './files.js';
+import { openMarkdown, saveMarkdown, registerFileHandler } from './files.js';
 import { render } from './render.js';
 import { createNote, updateNote, listNotes, deleteNote } from './store.js';
 
@@ -62,6 +62,7 @@ let saveTimer;
 let pendingSave = Promise.resolve();
 let revision = 0;
 let savedRevision = 0;
+let pendingAction = Promise.resolve();
 
 function report(error) {
   console.error(error);
@@ -108,19 +109,30 @@ function saveCurrent() {
   return pendingSave;
 }
 
-async function noteAction(action) {
-  noteControls.forEach((control) => { control.disabled = true; });
-  editor.readOnly = true;
-  try {
-    await saveCurrent();
-    await action();
-  } catch (error) {
-    if (currentNote) notesSelect.value = currentNote.id;
-    report(error);
-  } finally {
-    editor.readOnly = false;
-    noteControls.forEach((control) => { control.disabled = !currentNote; });
-  }
+function noteAction(action) {
+  // File launches and toolbar operations share one queue to preserve edits.
+  pendingAction = pendingAction.then(async () => {
+    noteControls.forEach((control) => { control.disabled = true; });
+    editor.readOnly = true;
+    try {
+      await saveCurrent();
+      await action();
+    } catch (error) {
+      if (currentNote) notesSelect.value = currentNote.id;
+      report(error);
+    } finally {
+      editor.readOnly = false;
+      noteControls.forEach((control) => { control.disabled = !currentNote; });
+    }
+  });
+  return pendingAction;
+}
+
+function importMarkdown(file) {
+  return noteAction(async () => {
+    loadNote(await createNote(file.content));
+    await refreshNotes();
+  });
 }
 
 editor.addEventListener('input', () => {
@@ -183,15 +195,18 @@ try {
   editor.readOnly = false;
 }
 
+// Launches wait in the browser until IndexedDB and the editor are ready.
+registerFileHandler(importMarkdown, (error) => {
+  console.error(error);
+  status.textContent = 'ファイルを開けませんでした。権限と拡張子を確認してください。';
+});
+
 document.querySelector('#open-file').addEventListener('click', async () => {
   try {
     // Invoke the picker during the click's user activation.
     const file = await openMarkdown();
     if (!file) return;
-    await noteAction(async () => {
-      loadNote(await createNote(file.content));
-      await refreshNotes();
-    });
+    await importMarkdown(file);
   } catch (error) {
     report(error);
   }
