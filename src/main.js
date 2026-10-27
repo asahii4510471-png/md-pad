@@ -5,42 +5,40 @@ import { createNote, updateNote, listNotes, deleteNote } from './store.js';
 
 document.querySelector('#app').innerHTML = `
   <header class="toolbar">
-    <a class="brand" href="./" aria-label="md-pad ホーム"><span class="brand-mark">m↓</span> md-pad</a>
-    <span class="tagline">書く、読む。手元に残す。</span>
+    <a class="brand" href="./" aria-label="md-pad ホーム">md-pad</a>
     <div class="file-actions">
-      <button id="open-file" type="button">.md を開く</button>
-      <button id="save-file" type="button">.md を保存</button>
+      <button id="open-file" type="button" aria-label="Markdownファイルを開く">開く</button>
+      <button id="save-file" type="button" aria-label="Markdownファイルを書き出す">書き出す</button>
     </div>
   </header>
   <main>
     <section class="notes-bar" aria-label="ノートの管理">
-      <label for="notes">ノート</label>
+      <label class="visually-hidden" for="notes">ノート</label>
       <select id="notes" aria-label="ノートを選択"></select>
-      <button id="new-note" type="button">新規</button>
+      <button id="new-note" type="button"><span aria-hidden="true">＋</span> 新規</button>
       <button id="delete-note" type="button">削除</button>
-      <span id="status" role="status" aria-live="polite">準備完了</span>
+      <span id="status" role="status" aria-live="polite">読込中</span>
     </section>
     <div class="mobile-tabs" role="group" aria-label="表示する画面">
       <button type="button" data-view="edit" aria-pressed="true">編集</button>
-      <button type="button" data-view="preview" aria-pressed="false">表示</button>
+      <button type="button" data-view="preview" aria-pressed="false">プレビュー</button>
     </div>
     <div class="workspace" data-view="edit">
       <section class="pane editor-pane" aria-labelledby="editor-label">
-        <h1 id="editor-label" class="pane-heading">編集 <span>MARKDOWN</span></h1>
-        <textarea id="editor" aria-label="Markdownを編集" spellcheck="false" placeholder="ここから書きはじめる…"></textarea>
+        <h1 id="editor-label" class="pane-heading">編集</h1>
+        <textarea id="editor" aria-label="Markdownを編集" spellcheck="false" placeholder="本文"></textarea>
       </section>
       <section class="pane preview-pane" aria-labelledby="preview-label">
-        <h2 id="preview-label" class="pane-heading">表示 <span>PREVIEW</span></h2>
+        <h2 id="preview-label" class="pane-heading">プレビュー</h2>
         <article id="preview" class="markdown-body"></article>
       </section>
     </div>
   </main>
-  <footer>md-pad <span>Markdown for your everyday notes.</span></footer>
 `;
 
 const editor = document.querySelector('#editor');
 const preview = document.querySelector('#preview');
-editor.value = '# はじめのノート\n\n思いついたことを、Markdownで。\n\n- [ ] メモを書く\n- [x] md-padを開く\n\n| できること | 書き方 |\n| --- | --- |\n| 太字 | **大切なこと** |\n| 取り消し線 | ~~書き直す~~ |\n\n```js\nconsole.log("Hello, md-pad!");\n```\n';
+
 function updatePreview() {
   preview.innerHTML = render(editor.value);
 }
@@ -88,7 +86,7 @@ function loadNote(note) {
   revision = savedRevision = 0;
   notesSelect.value = note.id;
   updatePreview();
-  status.textContent = '保存済み · この端末内';
+  status.textContent = '保存済み';
 }
 
 function saveCurrent() {
@@ -103,7 +101,7 @@ function saveCurrent() {
     if (currentNote?.id === id) {
       currentNote = note;
       savedRevision = savingRevision;
-      if (revision === savingRevision) status.textContent = '保存済み · この端末内';
+      if (revision === savingRevision) status.textContent = '保存済み';
       await refreshNotes();
     }
   });
@@ -185,7 +183,6 @@ try {
   editor.readOnly = false;
 }
 
-
 document.querySelector('#open-file').addEventListener('click', async () => {
   try {
     // Invoke the picker during the click's user activation.
@@ -203,12 +200,11 @@ document.querySelector('#open-file').addEventListener('click', async () => {
 document.querySelector('#save-file').addEventListener('click', async () => {
   try {
     const title = editor.value.split('\n').find((line) => line.trim())?.replace(/^#+\s*/, '').trim();
-    if (await saveMarkdown(editor.value, title)) status.textContent = '.md ファイルを保存しました';
+    if (await saveMarkdown(editor.value, title)) status.textContent = '書き出し済み';
   } catch (error) {
     report(error);
   }
 });
-
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const registerServiceWorker = () => {
