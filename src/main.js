@@ -1,5 +1,6 @@
 import './style.css';
 import { render } from './render.js';
+import { createNote, updateNote, listNotes, deleteNote } from './store.js';
 
 document.querySelector('#app').innerHTML = `
   <header class="toolbar">
@@ -52,4 +53,133 @@ for (const button of document.querySelectorAll('[data-view]button')) {
       tab.setAttribute('aria-pressed', String(tab === button));
     }
   });
+}
+
+const notesSelect = document.querySelector('#notes');
+const status = document.querySelector('#status');
+const noteControls = ['#notes', '#new-note', '#delete-note'].map((selector) => document.querySelector(selector));
+let currentNote = null;
+let saveTimer;
+let pendingSave = Promise.resolve();
+let revision = 0;
+let savedRevision = 0;
+
+function report(error) {
+  console.error(error);
+  status.textContent = '保存・操作に失敗しました。.md を保存して内容を保護し、再試行してください。';
+}
+
+async function refreshNotes() {
+  const notes = await listNotes();
+  notesSelect.replaceChildren(...notes.map((note) => {
+    const option = document.createElement('option');
+    option.value = note.id;
+    option.textContent = note.title;
+    return option;
+  }));
+  if (currentNote) notesSelect.value = currentNote.id;
+  return notes;
+}
+
+function loadNote(note) {
+  currentNote = note;
+  editor.value = note.content;
+  revision = savedRevision = 0;
+  notesSelect.value = note.id;
+  updatePreview();
+  status.textContent = '保存済み · この端末内';
+}
+
+function saveCurrent() {
+  clearTimeout(saveTimer);
+  if (!currentNote || revision === savedRevision) return pendingSave;
+  const id = currentNote.id;
+  const content = editor.value;
+  const savingRevision = revision;
+  // Serialize writes so an older transaction cannot overwrite a newer edit.
+  pendingSave = pendingSave.catch(() => {}).then(async () => {
+    const note = await updateNote(id, content);
+    if (currentNote?.id === id) {
+      currentNote = note;
+      savedRevision = savingRevision;
+      if (revision === savingRevision) status.textContent = '保存済み · この端末内';
+      await refreshNotes();
+    }
+  });
+  return pendingSave;
+}
+
+async function noteAction(action) {
+  noteControls.forEach((control) => { control.disabled = true; });
+  editor.readOnly = true;
+  try {
+    await saveCurrent();
+    await action();
+  } catch (error) {
+    if (currentNote) notesSelect.value = currentNote.id;
+    report(error);
+  } finally {
+    editor.readOnly = false;
+    noteControls.forEach((control) => { control.disabled = !currentNote; });
+  }
+}
+
+editor.addEventListener('input', () => {
+  if (!currentNote) return;
+  revision += 1;
+  status.textContent = '未保存…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { saveCurrent().catch(report); }, 500);
+});
+
+notesSelect.addEventListener('change', () => {
+  const selectedId = notesSelect.value;
+  noteAction(async () => {
+    const notes = await listNotes();
+    const selected = notes.find((note) => note.id === selectedId);
+    if (!selected) throw new Error('ノートが見つかりません。');
+    loadNote(selected);
+  });
+});
+
+document.querySelector('#new-note').addEventListener('click', () => {
+  noteAction(async () => {
+    loadNote(await createNote());
+    await refreshNotes();
+    editor.focus();
+  });
+});
+
+document.querySelector('#delete-note').addEventListener('click', () => {
+  if (!currentNote || !confirm(`「${currentNote.title}」を削除しますか？この操作は取り消せません。`)) return;
+  noteAction(async () => {
+    await deleteNote(currentNote.id);
+    currentNote = null;
+    const notes = await refreshNotes();
+    loadNote(notes[0] || await createNote());
+    await refreshNotes();
+  });
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveCurrent().catch(report);
+});
+window.addEventListener('beforeunload', (event) => {
+  if (revision !== savedRevision) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+
+noteControls.forEach((control) => { control.disabled = true; });
+editor.readOnly = true;
+try {
+  const notes = await listNotes();
+  loadNote(notes[0] || await createNote(editor.value));
+  await refreshNotes();
+  noteControls.forEach((control) => { control.disabled = false; });
+} catch (error) {
+  report(error);
+} finally {
+  editor.readOnly = false;
 }
