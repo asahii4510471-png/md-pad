@@ -35,7 +35,7 @@ npm run dev
 | `npm run size` | ビルド済みJS・CSS・HTMLを個別にgzipし合計KBを表示。150 KB以上で失敗 |
 | `node scripts/generate-icons.js` | 同梱の180 / 192 / 512px PNGアイコンを再生成 |
 
-`size` のKBは1,000バイト単位です。Service WorkerもJSに含みます。アイコン・manifestを含む全配信ファイルのgzip合計も併記し、こちらも150 KB未満を確認します。HTTPヘッダーは含みません。初期実装の測定値はJS・CSS・HTMLが **59.05 KB**、全配信ファイルが **63.72 KB** です。
+`size` のKBは1,000バイト単位です。Service WorkerもJSに含みます。アイコン・manifestを含む全配信ファイルのgzip合計も併記し、こちらも150 KB未満を確認します。HTTPヘッダーは含みません。初期実装の測定値はJS・CSS・HTMLが **59.14 KB**、全配信ファイルが **63.80 KB** です。
 
 実行時依存は `markdown-it`、`dompurify`、`markdown-it-task-lists` の3つだけです。開発依存は `vite`、`vitest`、`jsdom`、`fake-indexeddb` です。
 
@@ -43,7 +43,7 @@ npm run dev
 
 MarkdownからHTMLを作る処理は `src/render.js` の `render()` にまとめています。`markdown-it` は `html: false` とし、結果を必ずDOMPurifyに通してからプレビューの `innerHTML` に設定します。
 
-生のHTMLは実行せず文字として表示します。たとえば `<img src=x onerror=alert(1)>` は画像要素にならず、`[x](javascript:alert(1))` はリンクになりません。これらの文字列は無害な本文・コード例として残る場合があります。XSSテストでは実際のDOMに `onerror` 属性や `javascript:` URL属性が存在しないことを確認します。
+本文中の生HTMLは表示から除去します。コードブロック・インラインコード内のHTML例は文字として保持します。URLはMarkdownとして解析した後、DOMPurifyが危険なリンク先を除去します。XSSテストでは `<img src=x onerror=alert(1)>` と `[x](javascript:alert(1))` の描画結果に、それぞれ `onerror` と `javascript:` が残らないこと、および実行可能なDOM属性を作らないことを確認します。
 
 保存処理は `src/store.js`、ファイル操作は `src/files.js` に分離しています。IndexedDBへの書き込みは直列に実行し、古い保存で新しい編集を上書きしないようにしています。
 

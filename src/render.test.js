@@ -29,14 +29,14 @@ describe('XSS boundary', () => {
     const output = markup('<img src=x onerror=alert(1)>');
     expect(output.querySelector('img')).toBeNull();
     expect(output.querySelector('[onerror]')).toBeNull();
-    // html:false displays raw HTML as inert text, as it does in code blocks.
-    expect(output.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(render('<img src=x onerror=alert(1)>')).not.toContain('onerror');
   });
 
   it('never leaves a javascript: URL in an HTML attribute', () => {
     for (const source of ['[x](javascript:alert(1))', '[x](JaVaScRiPt:alert(1))', '[x](javascript&#58;alert(1))']) {
       const output = markup(source);
       expect(output.querySelector('[href]')).toBeNull();
+      expect(render(source)).not.toMatch(/javascript:/i);
       for (const element of output.querySelectorAll('*')) {
         for (const attribute of element.attributes) {
           expect(attribute.value).not.toMatch(/javascript:/i);
@@ -51,6 +51,17 @@ describe('XSS boundary', () => {
     const spy = vi.spyOn(DOMPurify, 'sanitize');
     render('**safe**');
     expect(spy).toHaveBeenCalled();
-    expect(markup('```html\n<img src=x onerror=alert(1)>\n```').querySelector('img')).toBeNull();
+    const example = markup('```html\n<img src=x onerror=alert(1)>\n```');
+    expect(example.querySelector('img')).toBeNull();
+    expect(example.querySelector('code').textContent).toContain('<img src=x onerror=alert(1)>');
   });
+});
+
+
+it('preserves escaped code, ordinary less-than signs, and safe links', () => {
+  const output = document.createElement('div');
+  output.innerHTML = render('A < B & C > D, ` <img src=x> ` and [safe](https://example.com).');
+  expect(output.textContent).toContain('A < B & C > D');
+  expect(output.querySelector('code').textContent).toContain('<img src=x>');
+  expect(output.querySelector('a').href).toBe('https://example.com/');
 });
